@@ -44,6 +44,8 @@ type Config struct {
 
 	// Scope specifies optional requested permissions.
 	Scopes []string
+
+	Params url.Values
 }
 
 // A TokenSource is anything that can return a token.
@@ -149,6 +151,30 @@ func (c *Config) PasswordCredentialsToken(ctx context.Context, username, passwor
 	})
 }
 
+func (c *Config) getParams(base url.Values) url.Values {
+	copyValues := func(values []string) []string {
+		newValues := make([]string, len(values))
+		copy(newValues, values)
+		return newValues
+	}
+	var params url.Values
+	if c.Params != nil {
+		params = make(url.Values, len(c.Params)+len(base))
+		for key, values := range c.Params {
+			params[key] = copyValues(values)
+		}
+	} else {
+		params = make(url.Values, len(base))
+	}
+	for key, values := range base {
+		if _, ok := params[key]; ok {
+			continue
+		}
+		params[key] = copyValues(values)
+	}
+	return params
+}
+
 // Exchange converts an authorization code into a token.
 //
 // It is used after a resource provider redirects the user back
@@ -160,12 +186,13 @@ func (c *Config) PasswordCredentialsToken(ctx context.Context, username, passwor
 // The code will be in the *http.Request.FormValue("code"). Before
 // calling Exchange, be sure to validate FormValue("state").
 func (c *Config) Exchange(ctx context.Context, code string) (*Token, error) {
-	return retrieveToken(ctx, c, url.Values{
+	baseParams := url.Values{
 		"grant_type":   {"authorization_code"},
 		"code":         {code},
 		"redirect_uri": internal.CondVal(c.RedirectURL),
 		"scope":        internal.CondVal(strings.Join(c.Scopes, " ")),
-	})
+	}
+	return retrieveToken(ctx, c, c.getParams(baseParams))
 }
 
 // Client returns an HTTP client using the provided token.
@@ -211,10 +238,11 @@ func (tf *tokenRefresher) Token() (*Token, error) {
 		return nil, errors.New("oauth2: token expired and refresh token is not set")
 	}
 
-	tk, err := retrieveToken(tf.ctx, tf.conf, url.Values{
+	baseParams := url.Values{
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {tf.refreshToken},
-	})
+	}
+	tk, err := retrieveToken(tf.ctx, tf.conf, tf.conf.getParams(baseParams))
 
 	if err != nil {
 		return nil, err
