@@ -14,6 +14,10 @@ import (
 	"golang.org/x/net/context"
 )
 
+const TokenRefreshNotifier = iota
+
+type TokenRefreshNotifierFunc func(*Token)
+
 // expiryDelta determines how earlier a token should be considered
 // expired than its actual expiration time. It is used to avoid late
 // expirations due to client-server time mismatches.
@@ -139,5 +143,9 @@ func retrieveToken(ctx context.Context, c *Config, v url.Values) (*Token, error)
 	if err != nil {
 		return nil, err
 	}
-	return tokenFromInternal(tk), nil
+	token := tokenFromInternal(tk)
+	if notifierFunc, ok := ctx.Value(TokenRefreshNotifier).(TokenRefreshNotifierFunc); ok {
+		notifierFunc(token)
+	}
+	return token, nil
 }
