@@ -10,9 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flynn/oauth2/internal"
 	"golang.org/x/net/context"
-	"golang.org/x/oauth2/internal"
 )
+
+const TokenRefreshNotifier = iota
+
+type TokenRefreshNotifierFunc func(*Token)
 
 // expiryDelta determines how earlier a token should be considered
 // expired than its actual expiration time. It is used to avoid late
@@ -139,5 +143,9 @@ func retrieveToken(ctx context.Context, c *Config, v url.Values) (*Token, error)
 	if err != nil {
 		return nil, err
 	}
-	return tokenFromInternal(tk), nil
+	token := tokenFromInternal(tk)
+	if notifierFunc, ok := ctx.Value(TokenRefreshNotifier).(TokenRefreshNotifierFunc); ok {
+		notifierFunc(token)
+	}
+	return token, nil
 }
